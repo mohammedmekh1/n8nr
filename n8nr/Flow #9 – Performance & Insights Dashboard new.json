@@ -1,0 +1,367 @@
+{
+  "name": "Flow #9 – Performance & Insights Dashboard new",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Schedule – Daily 8 AM Report",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -544,
+        144
+      ],
+      "id": "09a49136-1a19-4572-833d-ae946e61ff59"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Set Date Range (Last 24h + cumulative)\nconst now = new Date();\nconst yesterday = new Date(now.getTime() - 24*60*60*1000);\nconst weekAgo = new Date(now.getTime() - 7*24*60*60*1000);\n\nreturn [{\n  json: {\n    today_start: yesterday.toISOString().split('T')[0],\n    today_end: now.toISOString().split('T')[0],\n    week_start: weekAgo.toISOString().split('T')[0],\n    report_date: now.toLocaleDateString('ar-SA')\n  }\n}];"
+      },
+      "name": "Code – Set Report Date Range",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        144
+      ],
+      "id": "8bfdd185-da38-42a4-9dde-0ce1130e822a"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 1000
+      },
+      "name": "Supabase – New Leads (Today)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        -128
+      ],
+      "id": "466a5fdd-6b99-4f11-ab26-ce5423f2ca1c",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 1000
+      },
+      "name": "Supabase – Hot Leads (Today)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        48
+      ],
+      "id": "424055c4-daba-4155-a0a7-b3939c660788",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 1000
+      },
+      "name": "Supabase – Successful Deliveries",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        224
+      ],
+      "id": "afa90047-c9bc-4ec3-8ca1-04c2ad747774",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 1000
+      },
+      "name": "Supabase – Bookings / Conversions",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        400
+      ],
+      "id": "7ebdc5ed-c426-459b-a93d-a497da3aa652",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "name": "Merge All KPI Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        48,
+        144
+      ],
+      "id": "5f03db1d-132e-4625-ad6c-d2972e52cdbc"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate Core KPIs\nconst data = $input.first().json;\nconst new_leads = data.new_leads?.length || 0;\nconst hot_leads = data.hot_leads?.length || 0;\nconst deliveries = data.success_deliveries?.length || 0;\nconst bookings = data.bookings?.length || 0;\n\nconst conversion_rate = new_leads > 0 ? ((bookings / new_leads) * 100).toFixed(2) : 0;\nconst hot_to_booking = hot_leads > 0 ? ((bookings / hot_leads) * 100).toFixed(2) : 0;\nconst delivery_success_rate = deliveries > 0 ? 100 : 0;\n\nreturn [{\n  json: {\n    report_date: $json.report_date,\n    new_leads,\n    hot_leads,\n    successful_deliveries: deliveries,\n    bookings,\n    conversion_rate: conversion_rate + '%',\n    hot_to_booking_rate: hot_to_booking + '%',\n    delivery_success_rate: delivery_success_rate + '%',\n    week_start: $json.week_start\n  }\n}];"
+      },
+      "name": "Code – Calculate KPIs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        144
+      ],
+      "id": "5d3ef7d2-7709-4659-afe3-f2fe128f85c4"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate Insight Text\nlet k = $input.first().json;\nlet insight = '';\n\nif (parseFloat(k.conversion_rate) < 5) {\n  insight = '📉 التحويل منخفض جدًا – راجع سرعة الرد على Hot Leads أو جودة العروض';\n} else if (parseFloat(k.conversion_rate) > 20) {\n  insight = '🚀 أداء ممتاز! التحويل مرتفع – يمكن زيادة الميزانية أو توسيع القنوات';\n} else {\n  insight = '✅ أداء جيد ومستقر – استمر في المتابعة اليومية';\n}\n\nreturn [{ json: { ...k, daily_insight: insight } }];"
+      },
+      "name": "Code – Generate Daily Insight",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        144
+      ],
+      "id": "123d27d5-60e4-4af0-9ae8-e835fd522069"
+    },
+    {
+      "parameters": {
+        "operation": "insert"
+      },
+      "name": "Supabase – Save Daily Report",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        640,
+        144
+      ],
+      "id": "8e6af92a-3bd8-46e6-8c18-8c7e1e85c661",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "name": "Google Sheets – Export Report",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        848,
+        144
+      ],
+      "id": "7ffa5c69-dbf7-4e2b-8930-d3d9dd716b5c",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "YOUR_GOOGLE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_ADMIN_CHAT_ID",
+        "text": "=📊 **تقرير أداء يومي – مكة ماركت** 📅 {{ $json.report_date }}\n\n👥 عملاء جدد اليوم: {{ $json.new_leads }}\n🔥 Hot Leads: {{ $json.hot_leads }}\n✅ حجوزات/تحويلات: {{ $json.bookings }} ({{ $json.conversion_rate }})\n📈 نسبة Hot → حجز: {{ $json.hot_to_booking_rate }}\n📨 رسائل ناجحة: {{ $json.successful_deliveries }}\n\n💡 التحليل اليومي:\n{{ $json.daily_insight }}\n\n→ التفاصيل في Google Sheets",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Telegram – Daily Performance Report",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1040,
+        144
+      ],
+      "id": "fa8490be-92cb-4fe5-86b2-7ab9d3c021d3",
+      "webhookId": "d42f2122-8d3d-4142-8acd-abc7bde37d8c",
+      "credentials": {
+        "telegramApi": {
+          "id": null,
+          "name": "YOUR_TELEGRAM_CRED"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule – Daily 8 AM Report": {
+      "main": [
+        [
+          {
+            "node": "Code – Set Report Date Range",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Set Report Date Range": {
+      "main": [
+        [
+          {
+            "node": "Supabase – New Leads (Today)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – New Leads (Today)": {
+      "main": [
+        [
+          {
+            "node": "Merge All KPI Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Hot Leads (Today)": {
+      "main": [
+        [
+          {
+            "node": "Merge All KPI Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Successful Deliveries": {
+      "main": [
+        [
+          {
+            "node": "Merge All KPI Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Bookings / Conversions": {
+      "main": [
+        [
+          {
+            "node": "Merge All KPI Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All KPI Data": {
+      "main": [
+        [
+          {
+            "node": "Code – Calculate KPIs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Calculate KPIs": {
+      "main": [
+        [
+          {
+            "node": "Code – Generate Daily Insight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Generate Daily Insight": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Save Daily Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Save Daily Report": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets – Export Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets – Export Report": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Daily Performance Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "1b003f70-c88e-450c-bbd2-27e7a1b69b09",
+  "meta": {
+    "instanceId": "6772f213d520ca9fb17003dc3594b1426a067fd044fec34984f98f9281430de2"
+  },
+  "id": "GlXRxz0RYsLND0Oa6EBWN",
+  "tags": []
+}

@@ -1,0 +1,546 @@
+{
+  "name": "Flow #5 – Universal Delivery Engine Enhanced 2026new",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "makkah-delivery-engine",
+        "options": {}
+      },
+      "name": "Webhook – Delivery Engine Entry",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        -80
+      ],
+      "webhookId": "generate-new-id",
+      "id": "5460a105-c6eb-43c5-ba76-eaee477c1ac5"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 1
+      },
+      "name": "Supabase – Check Consent & Profile",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        -80
+      ],
+      "id": "b7fe0b7b-4dbf-4307-a1bc-df245b3ac911",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $input.first().json.consent === true || $json.action_type === 'transactional' }}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – Consent Granted or Transactional?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        -80
+      ],
+      "id": "f5e1ee61-eae8-4958-a76d-578b3134f637"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rate Limit per Lead (phone or email)\nconst identifier = $json.lead_phone || $json.lead_email || 'unknown';\nconst windowSec = 300;\nconst maxPerWindow = 8;\n\nconst now = Date.now();\nconst key = 'delivery_rate:' + identifier;\nlet history = $staticData[key] || [];\nhistory = history.filter(ts => now - ts < windowSec * 1000);\n\nif (history.length >= maxPerWindow) {\n  return [{ json: { ...$json, rate_limited: true, reason: 'Rate limit exceeded (8 messages/5min)' } }];\n}\n\nhistory.push(now);\n$staticData[key] = history;\n\nreturn [{ json: { ...$json, rate_limited: false } }];"
+      },
+      "name": "Code – Rate Limit Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -624,
+        -224
+      ],
+      "id": "1e8df56c-d2b6-4eb8-abd3-c3cc606d44d6"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.rate_limited }}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – Rate Limited?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        96,
+        -224
+      ],
+      "id": "2725c2b0-903a-44ba-944e-50e5267282d8"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Personalize Message Template\nlet payload = $input.first().json;\nlet text = payload.custom_message || 'رسالة افتراضية';\n\n// Replace placeholders\ntext = text.replace(/{{name}}/g, payload.personalization?.name || 'العميل');\ntext = text.replace(/{{pax}}/g, payload.personalization?.pax || '');\ntext = text.replace(/{{checkin_date}}/g, payload.personalization?.checkin_date || '');\ntext = text.replace(/{{offer_code}}/g, payload.personalization?.offer_code || '');\ntext = text.replace(/{{hotel_name}}/g, payload.personalization?.hotel_name || 'فنادق مكة');\n\nreturn [{ json: { ...payload, final_message: text.trim() } }];"
+      },
+      "name": "Code – Personalize Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        0
+      ],
+      "id": "21bc678e-993b-4031-a7c4-a645115913b1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.channel }}",
+                    "value2": "whatsapp"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.channel }}",
+                    "value2": "telegram"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.channel }}",
+                    "value2": "sms"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.channel }}",
+                    "value2": "email"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Switch – Channel Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        144,
+        -32
+      ],
+      "id": "ae1ea9be-360d-44ed-b7f9-7ed88321f9f3"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v19.0/YOUR_PHONE_ID/messages",
+        "authentication": "headerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  messaging_product: 'whatsapp',\n  to: $json.lead_phone,\n  type: 'text',\n  text: { body: $json.final_message }\n} }}",
+        "options": {}
+      },
+      "name": "WhatsApp – Send Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        400,
+        -128
+      ],
+      "id": "a87bccf8-67d0-4d5b-8d38-955c27e9e7d1"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.lead_phone }}",
+        "text": "={{ $json.final_message }}",
+        "additionalFields": {}
+      },
+      "name": "Telegram – Send Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        400,
+        32
+      ],
+      "id": "011bac3b-262b-4f7c-8cce-9813753b099a",
+      "webhookId": "c21d637b-e30c-406b-9779-b55248c1bf01",
+      "credentials": {
+        "telegramApi": {
+          "id": null,
+          "name": "YOUR_TELEGRAM_BOT_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/YOUR_ACCOUNT_SID/Messages.json",
+        "authentication": "headerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  To: $json.lead_phone,\n  From: 'YOUR_TWILIO_NUMBER',\n  Body: $json.final_message\n} }}",
+        "options": {}
+      },
+      "name": "SMS – Twilio Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        400,
+        192
+      ],
+      "id": "9d0acc89-51f0-4c9d-a760-888ecf9e19e2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "headerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  from: 'Makkah Market <info@yourdomain.com>',\n  to: $json.lead_email,\n  subject: ($json.action_type === 'booking' ? 'تأكيد حجزك في مكة' : 'عرض خاص لك'),\n  html: '<p>' + $json.final_message + '</p>'\n} }}",
+        "options": {}
+      },
+      "name": "Email – Resend Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        560,
+        32
+      ],
+      "id": "fff0d652-188e-4cfe-8f2e-2acdb4bef3b6"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "name": "Merge All Channel Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        768,
+        48
+      ],
+      "id": "e8fa6fc2-f4eb-484d-8437-752c5bdb0efe"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.status === 'success' || $json.statusCode < 400 || $json.message_id }}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – Delivery Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        224
+      ],
+      "id": "71447b7f-9a4e-44f8-9faf-ac1c2b384587"
+    },
+    {
+      "parameters": {
+        "operation": "insert"
+      },
+      "name": "Supabase – Log Successful Delivery",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        208
+      ],
+      "id": "8a36853e-696e-49d9-b4b7-e0d156c58af7",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_ADMIN_CHAT_ID",
+        "text": "=⚠️ **فشل إرسال رسالة**\nLead: {{ $json.lead_phone || $json.lead_email }}\nقناة: {{ $json.channel }}\nالسبب: {{ $json.error || 'Unknown' }}",
+        "additionalFields": {}
+      },
+      "name": "Telegram – Delivery Failure Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        208
+      ],
+      "id": "fcd5f1be-d720-43aa-a350-be03ef1c317b",
+      "webhookId": "5ad105c7-9a4c-496c-9bba-d86829177641",
+      "credentials": {
+        "telegramApi": {
+          "id": null,
+          "name": "YOUR_TELEGRAM_BOT_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert"
+      },
+      "name": "Supabase – Log Failed Delivery",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        128,
+        240
+      ],
+      "id": "1b03b6a6-7556-47e3-9bf4-0e3141b0bc2c",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook – Delivery Engine Entry": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Check Consent & Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Check Consent & Profile": {
+      "main": [
+        [
+          {
+            "node": "If – Consent Granted or Transactional?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – Consent Granted or Transactional?": {
+      "main": [
+        [
+          {
+            "node": "Code – Rate Limit Check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram – Delivery Failure Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Rate Limit Check": {
+      "main": [
+        [
+          {
+            "node": "If – Rate Limited?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – Rate Limited?": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Delivery Failure Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code – Personalize Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Personalize Message": {
+      "main": [
+        [
+          {
+            "node": "Switch – Channel Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch – Channel Router": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp – Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram – Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SMS – Twilio Send",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email – Resend Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp – Send Message": {
+      "main": [
+        [
+          {
+            "node": "Merge All Channel Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram – Send Message": {
+      "main": [
+        [
+          {
+            "node": "Merge All Channel Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SMS – Twilio Send": {
+      "main": [
+        [
+          {
+            "node": "Merge All Channel Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email – Resend Send": {
+      "main": [
+        [
+          {
+            "node": "Merge All Channel Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Channel Responses": {
+      "main": [
+        [
+          {
+            "node": "If – Delivery Success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – Delivery Success?": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Log Successful Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram – Delivery Failure Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Supabase – Log Failed Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "494c6aa5-95b6-4962-b869-78f3667edc0d",
+  "meta": {
+    "instanceId": "6772f213d520ca9fb17003dc3594b1426a067fd044fec34984f98f9281430de2"
+  },
+  "id": "1bSztV_w6hnfcjhC9LEfK",
+  "tags": []
+}

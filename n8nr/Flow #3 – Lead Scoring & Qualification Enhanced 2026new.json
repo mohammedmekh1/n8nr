@@ -1,0 +1,553 @@
+{
+  "name": "Flow #3 – Lead Scoring & Qualification Enhanced 2026new",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-scoring-entry",
+        "options": {}
+      },
+      "name": "Webhook – From Flow #2 (Capture)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -768,
+        -496
+      ],
+      "webhookId": "generate-new-id",
+      "id": "4d2407e8-3604-4e7e-9385-780a69f3a04f"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "radar-hot-lead",
+        "options": {}
+      },
+      "name": "Webhook – From Flow #1 (Radar Hot)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -784,
+        -320
+      ],
+      "webhookId": "generate-new-id",
+      "id": "7524f040-bb7e-462c-9379-4fee95e07e9f"
+    },
+    {
+      "parameters": {
+        "mode": "multiplex",
+        "options": {}
+      },
+      "name": "Merge Incoming Leads",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        -576,
+        -432
+      ],
+      "id": "58807d7e-3912-498f-bfdf-48eafddf1973"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Lead for Scoring v2\nlet lead = $input.first().json;\n\nlet source = lead.source || 'Form';\nlet base_score = (source === 'Radar' || source === 'X') ? (lead.purchase_intent || 10) : 5;\nlet sentiment = lead.sentiment_score || 0;\nlet phone = lead.phone || 'unknown';\nlet message = lead.message || lead.clean_text || '';\n\nreturn [{ json: {\n  phone,\n  name: lead.name || 'Unknown',\n  source,\n  base_score,\n  sentiment,\n  message,\n  raw: lead\n} }];"
+      },
+      "name": "Code – Normalize Lead Data v2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -272,
+        -432
+      ],
+      "id": "35a56b13-c1c2-4f6d-b464-caefbab60399"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 10
+      },
+      "name": "Supabase – Get Lead History (Last 10)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -432
+      ],
+      "id": "413d3293-9315-41d7-8f66-484788ab7823",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate Loyalty & History Bonus\nlet data = $input.first().json;\nlet history = $node['Supabase – Get Lead History (Last 10)'].json || [];\n\nlet loyalty_points = Math.min(history.length * 4, 25); // max 25\nlet interaction_bonus = history.filter(h => h.message_count > 2).length * 5;\nlet total_base = data.base_score + loyalty_points + interaction_bonus;\n\nreturn [{ json: { ...data, loyalty_points, interaction_bonus, total_base } }];"
+      },
+      "name": "Code – Calculate Base & Loyalty",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        -432
+      ],
+      "id": "4d5dc3af-9ecc-47c3-9826-c6cdb2cc9831"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.message }}",
+              "operation": "contains",
+              "value2": "عاجل OR حالا OR حجز فوري OR متاح اليوم"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – High Urgency Keywords?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        400,
+        -432
+      ],
+      "id": "4a154a4a-ff78-4a91-98d8-267a40d8a174"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Add Urgency & Source Weight\nlet data = $input.first().json;\nlet urgency_points = 0;\n\nif (data.source === 'Radar' && data.action === 'push_hot') urgency_points += 30;\nif (data.source === 'X' && data.sentiment > 0.5) urgency_points += 15;\n\nreturn [{ json: { ...data, urgency_points } }];"
+      },
+      "name": "Code – Add Urgency Points",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        -448
+      ],
+      "id": "5246921b-6f24-48d8-bc31-c7bd5b4d5680"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.message }}",
+              "operation": "contains",
+              "value2": "شركة OR مكتب OR سياحة OR مجموعة OR فندق OR جهة OR شراكة"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – B2B Indicators?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        -128
+      ],
+      "id": "4a2cd505-6371-4a8c-9917-13c8955b2343"
+    },
+    {
+      "parameters": {
+        "jsCode": "// B2B Bonus Logic\nlet data = $input.first().json;\nlet b2b_points = 0;\nlet lead_type = 'B2C_warm';\n\nif (data.message.includes('شركة') || data.message.includes('مكتب') || data.message.includes('شراكة')) {\n  b2b_points += 35;\n  lead_type = 'B2B_high';\n}\n\nreturn [{ json: { ...data, b2b_points, lead_type } }];"
+      },
+      "name": "Code – Add B2B Points & Type",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -144
+      ],
+      "id": "0634001b-0259-4981-a433-24395bca6cd1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.message.match(/\\d+/) ? parseInt($json.message.match(/\\d+/)[0]) : 0 }}",
+              "operation": "larger",
+              "value2": 8
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – Large Group (Pax >8)?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        304,
+        -112
+      ],
+      "id": "6920f3bd-e3ba-4227-a5e2-bb232a7a165a"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$input.first().json, pax_points: 20, lead_type: 'B2C_group' } }];"
+      },
+      "name": "Code – Add Large Group Points",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        -128
+      ],
+      "id": "016c402d-6662-47b9-9190-3e175f3c67ec"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "name": "Merge All Score Components",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        -576,
+        112
+      ],
+      "id": "9bcc8fd6-b503-414a-87f9-65559cb4424d"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Final Score Calculation v2\nlet item = $input.first().json;\nlet total = (item.total_base || 0) +\n            (item.urgency_points || 0) +\n            (item.b2b_points || 0) +\n            (item.pax_points || 0);\n\ntotal = Math.min(total, 100);\n\nlet status = 'Cold';\nif (total >= 75) status = 'Hot';\nelse if (total >= 45) status = 'Warm';\n\nlet final_lead_type = item.lead_type || (total >= 75 ? 'Hot' : 'Warm');\n\nreturn [{ json: {\n  ...item,\n  final_score: total,\n  status,\n  final_lead_type,\n  scored_at: new Date().toISOString()\n} }];"
+      },
+      "name": "Code – Final Score & Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -384,
+        112
+      ],
+      "id": "4925d6c0-0fe3-4082-b8a6-3cb60b9ef6f6"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "value2": "Hot"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – Is Hot Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        112
+      ],
+      "id": "64ac1a45-4352-47ac-bbb6-9b9b3a7d32a1"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_SALES_CHAT_ID",
+        "text": "=🔥 **LEAD HOT – درجة عالية جدًا!**\n\nالاسم: {{ $json.name }}\nالهاتف: {{ $json.phone }}\nالدرجة: {{ $json.final_score }}/100\nالنوع: {{ $json.final_lead_type }}\nالمصدر: {{ $json.source }}\n\n→ يتم إرساله الآن لفريق المبيعات",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Telegram – Hot Lead Alert Detailed",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        528,
+        96
+      ],
+      "id": "ca0b8874-c03a-468c-b9e3-2e538435250f",
+      "webhookId": "44f8fcd4-bcc8-4c33-b6d5-bdf8abe9443e"
+    },
+    {
+      "parameters": {
+        "operation": "update"
+      },
+      "name": "Supabase – Save Final Score & Type",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        48,
+        128
+      ],
+      "id": "d619ac54-32f5-4ba5-8b8e-b18744662972",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-n8n-domain.com/webhook/marketing-journey",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { ...$json, next_action: 'nurture' } }}",
+        "options": {}
+      },
+      "name": "HTTP – Send Warm/Cold to Journey (Flow #4)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        272,
+        128
+      ],
+      "id": "490bc18f-5378-4cae-831f-27a26274592e"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-n8n-domain.com/webhook/makkah-sales-handoff",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "name": "HTTP – Push Hot to Sales Handoff (Flow #6)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        752,
+        96
+      ],
+      "id": "7dd29dae-7cd7-4244-bc42-428271069561"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook – From Flow #2 (Capture)": {
+      "main": [
+        [
+          {
+            "node": "Merge Incoming Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook – From Flow #1 (Radar Hot)": {
+      "main": [
+        [
+          {
+            "node": "Merge Incoming Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Incoming Leads": {
+      "main": [
+        [
+          {
+            "node": "Code – Normalize Lead Data v2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Normalize Lead Data v2": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Get Lead History (Last 10)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Get Lead History (Last 10)": {
+      "main": [
+        [
+          {
+            "node": "Code – Calculate Base & Loyalty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Calculate Base & Loyalty": {
+      "main": [
+        [
+          {
+            "node": "If – High Urgency Keywords?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – High Urgency Keywords?": {
+      "main": [
+        [
+          {
+            "node": "Code – Add Urgency Points",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If – B2B Indicators?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Add Urgency Points": {
+      "main": [
+        [
+          {
+            "node": "If – B2B Indicators?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – B2B Indicators?": {
+      "main": [
+        [
+          {
+            "node": "Code – Add B2B Points & Type",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If – Large Group (Pax >8)?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Add B2B Points & Type": {
+      "main": [
+        [
+          {
+            "node": "Merge All Score Components",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – Large Group (Pax >8)?": {
+      "main": [
+        [
+          {
+            "node": "Code – Add Large Group Points",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge All Score Components",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Add Large Group Points": {
+      "main": [
+        [
+          {
+            "node": "Merge All Score Components",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Score Components": {
+      "main": [
+        [
+          {
+            "node": "Code – Final Score & Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Final Score & Classification": {
+      "main": [
+        [
+          {
+            "node": "If – Is Hot Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – Is Hot Lead?": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Hot Lead Alert Detailed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP – Push Hot to Sales Handoff (Flow #6)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase – Save Final Score & Type",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP – Send Warm/Cold to Journey (Flow #4)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram – Hot Lead Alert Detailed": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Save Final Score & Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "beda0759-ec0b-4eca-97e5-d81ff3189fdc",
+  "meta": {
+    "instanceId": "6772f213d520ca9fb17003dc3594b1426a067fd044fec34984f98f9281430de2"
+  },
+  "id": "BvtDR9vWOl73jZ3aH0TRY",
+  "tags": []
+}

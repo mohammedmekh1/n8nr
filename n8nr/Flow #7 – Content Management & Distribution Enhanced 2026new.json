@@ -1,0 +1,317 @@
+{
+  "name": "Flow #7 – Content Management & Distribution Enhanced 2026new",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "YOUR_RSS_FEED_URL",
+        "options": {}
+      },
+      "name": "RSS Trigger – New Content",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [
+        -816,
+        -368
+      ],
+      "id": "6310c5d6-0335-48d5-bbe6-b59d3588d20b"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 10
+      },
+      "name": "Supabase – Get Scheduled Content",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -816,
+        -112
+      ],
+      "id": "1663a712-f4c6-41e1-b6e5-2d28f2ddb37d",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "name": "Merge RSS & Scheduled",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        -624,
+        -208
+      ],
+      "id": "f67ef573-b32a-4e60-affc-be7ce8d15900"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $input.all().length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – Has Content to Process?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -416,
+        -208
+      ],
+      "id": "9a5c6c68-1865-4206-9d79-62ec79dbf331"
+    },
+    {
+      "parameters": {
+        "text": "=أنت مسوق فنادق مكة 2026. خذ هذا المحتوى:\nالعنوان: {{ $json.title }}\nالوصف: {{ $json.description || $json.contentSnippet }}\nالرابط: {{ $json.link }}\n\nأنشئ 3 نسخ مختلفة:\n1. لـ X (280 حرف max، جذاب، هاشتاغات)\n2. لـ LinkedIn (احترافي، دعوة للتفاعل)\n3. لـ Instagram (قصير، إيموجي، دعوة حجز)\n\nأجب بـ JSON فقط:\n{\n  \"x_post\": \"...\",\n  \"linkedin_post\": \"...\",\n  \"instagram_caption\": \"...\",\n  \"image_prompt\": \"وصف صورة جذابة للمنشور (بالإنجليزية)\"\n}",
+        "options": {}
+      },
+      "name": "AI – Generate Platform Posts",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.1,
+      "position": [
+        -240,
+        -224
+      ],
+      "id": "0a425c89-097a-4770-a30a-ee4ec86cdd3a"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI Output + Add Metadata\nlet raw = $input.first().json.output || '';\nlet parsed;\ntry {\n  parsed = JSON.parse(raw.replace(/```json\\n?|```/g, '').trim());\n} catch (e) {\n  parsed = { error: 'Parse failed' };\n}\n\nreturn Object.keys(parsed).filter(k => k.includes('_post') || k === 'instagram_caption').map(platform => ({\n  json: {\n    ...$input.first().json,\n    platform: platform.split('_')[0],\n    text: parsed[platform],\n    image_prompt: parsed.image_prompt || 'مكة المكرمة فندق فاخر غروب',\n    original_title: $json.title,\n    link: $json.link,\n    status: 'generated'\n  }\n}));"
+      },
+      "name": "Code – Parse & Split Platforms",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        -224
+      ],
+      "id": "cca64b0e-a492-40d8-b5a0-9313e287dee6"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Split In Batches – Per Platform",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [
+        192,
+        -224
+      ],
+      "id": "c5442378-d117-4062-b0de-bcb8ce0ac74f"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_REVIEW_CHAT_ID",
+        "text": "=مراجعة منشور جديد ({{ $json.platform }})\n\n{{ $json.text }}\n\nالرابط الأصلي: {{ $json.link }}\nPrompt الصورة: {{ $json.image_prompt }}\n\nرد بـ 'approve' أو 'reject' أو 'edit: نص جديد'",
+        "additionalFields": {}
+      },
+      "name": "Telegram – Send for Review",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        384,
+        -224
+      ],
+      "id": "cd80a4e0-1e93-414f-ad0c-6f9321ecbcf5",
+      "webhookId": "b06fdc9e-276c-4849-b90c-6d00e3c56017",
+      "credentials": {
+        "telegramApi": {
+          "id": null,
+          "name": "YOUR_TELEGRAM_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert"
+      },
+      "name": "Supabase – Save Generated Post",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        592,
+        -224
+      ],
+      "id": "ad5bd7e8-f6ba-414d-abe2-32a413a1359c",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.bufferapp.com/1/updates/create.json",
+        "authentication": "headerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  profile_ids: ['YOUR_BUFFER_PROFILE_ID'],\n  text: $json.text,\n  media: { photo: $json.image_url || '' },\n  scheduled_at: '{{ $now.plus({ hours: 2 }).toISO() }}'\n} }}",
+        "options": {}
+      },
+      "name": "Buffer – Schedule Post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        784,
+        -224
+      ],
+      "id": "4dd7356a-1797-4896-9283-e55334121a79"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_REVIEW_CHAT_ID",
+        "text": "=✅ **تم جدولة المنشور بنجاح!**\nمنصة: {{ $json.platform }}\nالنص: {{ $json.text | truncate(100) }}\nرابط Buffer: [تحقق هنا](https://publish.buffer.com)",
+        "additionalFields": {}
+      },
+      "name": "Telegram – Post Scheduled Confirmation",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        992,
+        -224
+      ],
+      "id": "df4f99dc-8265-4387-ae97-f0b22a43e917",
+      "webhookId": "df95469a-6915-4cf8-8448-13dbc027dace"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "RSS Trigger – New Content": {
+      "main": [
+        [
+          {
+            "node": "Merge RSS & Scheduled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Get Scheduled Content": {
+      "main": [
+        [
+          {
+            "node": "Merge RSS & Scheduled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge RSS & Scheduled": {
+      "main": [
+        [
+          {
+            "node": "If – Has Content to Process?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – Has Content to Process?": {
+      "main": [
+        [
+          {
+            "node": "AI – Generate Platform Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI – Generate Platform Posts": {
+      "main": [
+        [
+          {
+            "node": "Code – Parse & Split Platforms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Parse & Split Platforms": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches – Per Platform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches – Per Platform": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Send for Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram – Send for Review": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Save Generated Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Save Generated Post": {
+      "main": [
+        [
+          {
+            "node": "Buffer – Schedule Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buffer – Schedule Post": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Post Scheduled Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "e88afdd7-9222-4ce3-a050-a47ec5d9319d",
+  "meta": {
+    "instanceId": "6772f213d520ca9fb17003dc3594b1426a067fd044fec34984f98f9281430de2"
+  },
+  "id": "h89IS3H2voh3AkIiURxtw",
+  "tags": []
+}

@@ -1,0 +1,498 @@
+{
+  "name": "Flow #4 – Automated Marketing Journeys Enhanced 2026new",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "marketing-journey",
+        "options": {}
+      },
+      "name": "Webhook – From Flow #3 (Scoring)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -1328,
+        0
+      ],
+      "webhookId": "generate-new-id",
+      "id": "6392c2f8-fa01-4417-96ac-b057b2bdde72"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 1
+      },
+      "name": "Supabase – Get Current Lead Profile",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -1136,
+        0
+      ],
+      "id": "7af1b08e-d49e-4fa0-8219-0377d73bfa6f",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Set Journey Defaults & Merge Data\nlet lead = $input.first().json;\nlet profile = $node['Supabase – Get Current Lead Profile'].json[0] || {};\n\nlead.journey_step = profile.journey_step || 'new';\nlead.preferred_channel = profile.preferred_channel || (lead.source?.includes('WhatsApp') ? 'whatsapp' : 'telegram');\nlead.name = lead.name || profile.name || 'العميل';\nlead.final_lead_type = lead.final_lead_type || profile.lead_type || 'Warm';\n\nreturn [{ json: lead }];"
+      },
+      "name": "Code – Normalize Journey Data v2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -928,
+        0
+      ],
+      "id": "38733fcb-45e2-4be7-986b-7a085945c47b"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.final_lead_type || $json.status }}",
+                    "value2": "Hot"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.final_lead_type || $json.status }}",
+                    "value2": "B2B"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.journey_step }}",
+                    "value2": "cold"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.journey_step }}",
+                    "value2": "warm"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Switch – Lead Type / Journey Step",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -768,
+        -32
+      ],
+      "id": "9ab2a1ea-7eaf-439a-baa8-c37cac7c4f50"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$input.first().json, message_template: 'hot_welcome', text: `مرحبا {{name}}! لاحظنا اهتمامك العالي بحجوزات مكة. هل تريد عرض خاص الآن؟` } }];"
+      },
+      "name": "Code – Hot Welcome Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        -160
+      ],
+      "id": "0d137b24-f156-4876-a9c7-34d0abf94af6"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$input.first().json, message_template: 'b2b_nurture', text: `مرحبا {{name}}، لاحظنا أنك تمثل جهة/شركة. هل نبحث عن شراكة طويلة الأمد في حجوزات مكة؟` } }];"
+      },
+      "name": "Code – B2B Nurture Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        -16
+      ],
+      "id": "582193c0-201c-4ec6-95b7-615f80696d00"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$input.first().json, message_template: 'warm_discount', text: `مرحبا {{name}}، ما زلنا نحتفظ بعرض خاص لك في فنادق مكة. هل تفضل التواصل الآن؟` } }];"
+      },
+      "name": "Code – Warm Nurture Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        128
+      ],
+      "id": "d2adce96-0b73-4a44-9445-c7553b937260"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$input.first().json, message_template: 'cold_reengage', text: `مرحبا {{name}}، لاحظنا أنك مهتم سابقًا بحجوزات مكة. العروض ما زالت سارية – هل نرسل لك تفاصيل جديدة؟` } }];"
+      },
+      "name": "Code – Cold Re-engagement Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        288
+      ],
+      "id": "311cee51-49bb-40f4-b462-312b7f3e5082"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "name": "Merge Message Branches",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        -352,
+        16
+      ],
+      "id": "8c95dd75-b521-42b1-b117-9daee4bd4c1b"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.preferred_channel }}",
+                    "value2": "whatsapp"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.preferred_channel }}",
+                    "value2": "telegram"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Switch – Preferred Channel",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -192,
+        16
+      ],
+      "id": "c3f1a210-4cd8-417d-8d16-fa5204f2a876"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-n8n-domain.com/webhook/makkah-delivery-engine",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { lead_phone: $json.phone, channel: 'whatsapp', custom_message: $json.text, template_id: $json.message_template, personalization: { name: $json.name }, action_type: 'marketing' } }}",
+        "options": {}
+      },
+      "name": "HTTP – Send via Delivery Engine (WhatsApp)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        16,
+        -80
+      ],
+      "id": "fc5ea533-5b12-4563-bedd-89ca02950f5b"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-n8n-domain.com/webhook/makkah-delivery-engine",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { lead_phone: $json.phone, channel: 'telegram', custom_message: $json.text, template_id: $json.message_template, personalization: { name: $json.name }, action_type: 'marketing' } }}",
+        "options": {}
+      },
+      "name": "HTTP – Send via Delivery Engine (Telegram)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        16,
+        128
+      ],
+      "id": "907005c2-3d06-4bcd-84ab-ecfd35428f57"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "name": "Merge Delivery Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        32
+      ],
+      "id": "13ad6411-1c02-4b2f-a94b-38926730b834"
+    },
+    {
+      "parameters": {
+        "operation": "update"
+      },
+      "name": "Supabase – Update Journey Step & Log",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        400,
+        32
+      ],
+      "id": "9a216bd3-6913-4b43-906a-bdf4a6083539",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_ADMIN_CHAT_ID",
+        "text": "=📩 **تم إرسال رسالة تسويقية**\nLead: {{ $json.phone }} ({{ $json.name }})\nنوع: {{ $json.final_lead_type }}\nقناة: {{ $json.preferred_channel }}\nالرسالة: {{ $json.text | truncate(100) }}",
+        "additionalFields": {}
+      },
+      "name": "Telegram – Journey Step Confirmation",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        560,
+        32
+      ],
+      "id": "25c34609-4f22-4a44-87fa-d885f0f6eb6d",
+      "webhookId": "c9469bdd-dee2-4cca-bdec-597c03669de5"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook – From Flow #3 (Scoring)": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Get Current Lead Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Get Current Lead Profile": {
+      "main": [
+        [
+          {
+            "node": "Code – Normalize Journey Data v2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Normalize Journey Data v2": {
+      "main": [
+        [
+          {
+            "node": "Switch – Lead Type / Journey Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch – Lead Type / Journey Step": {
+      "main": [
+        [
+          {
+            "node": "Code – Hot Welcome Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code – B2B Nurture Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code – Cold Re-engagement Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code – Warm Nurture Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Hot Welcome Message": {
+      "main": [
+        [
+          {
+            "node": "Merge Message Branches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – B2B Nurture Message": {
+      "main": [
+        [
+          {
+            "node": "Merge Message Branches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Cold Re-engagement Message": {
+      "main": [
+        [
+          {
+            "node": "Merge Message Branches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Warm Nurture Message": {
+      "main": [
+        [
+          {
+            "node": "Merge Message Branches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Message Branches": {
+      "main": [
+        [
+          {
+            "node": "Switch – Preferred Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch – Preferred Channel": {
+      "main": [
+        [
+          {
+            "node": "HTTP – Send via Delivery Engine (WhatsApp)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP – Send via Delivery Engine (Telegram)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP – Send via Delivery Engine (WhatsApp)": {
+      "main": [
+        [
+          {
+            "node": "Merge Delivery Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP – Send via Delivery Engine (Telegram)": {
+      "main": [
+        [
+          {
+            "node": "Merge Delivery Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Delivery Responses": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Update Journey Step & Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Update Journey Step & Log": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Journey Step Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "331c91eb-cbd4-41d7-a9aa-767aa2aaeeb1",
+  "meta": {
+    "instanceId": "6772f213d520ca9fb17003dc3594b1426a067fd044fec34984f98f9281430de2"
+  },
+  "id": "I25h4PkO0FqdF1HQdl2fy",
+  "tags": []
+}

@@ -1,0 +1,650 @@
+{
+  "name": "Flow #2 – Lead Capture 2026 Enhanced & Safenew",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-capture-whatsapp",
+        "options": {}
+      },
+      "name": "Webhook – WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        -288
+      ],
+      "webhookId": "generate-new-id",
+      "id": "48060600-56d1-4564-ac60-b37bc34f6b06"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-capture-telegram",
+        "options": {}
+      },
+      "name": "Webhook – Telegram",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        -144
+      ],
+      "webhookId": "generate-new-id",
+      "id": "2536ca04-9717-4b52-97a4-b8c13c80b4fb"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-capture-instagram",
+        "options": {}
+      },
+      "name": "Webhook – Instagram (Meta)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        0
+      ],
+      "webhookId": "generate-new-id",
+      "id": "83baf522-2ec8-4c0e-b327-47e7c2f34826"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-capture-website",
+        "options": {}
+      },
+      "name": "Webhook – Website Form",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        176
+      ],
+      "webhookId": "generate-new-id",
+      "id": "424dafb5-55eb-4aa4-98c2-6d02e1ed4aa2"
+    },
+    {
+      "parameters": {
+        "mode": "multiplex",
+        "options": {}
+      },
+      "name": "Merge All Incoming Channels",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        336,
+        -48
+      ],
+      "id": "e30c8883-a2f4-4de8-b50c-ea097f7fb235"
+    },
+    {
+      "parameters": {
+        "jsCode": "let item = $input.first().json;\n\nlet phone = item.from?.phone_number || item.phone || item.contact?.phone || '';\nlet name = item.from?.name || item.name || item.contact?.name || 'Unknown';\nlet email = item.email || '';\nlet source = 'Unknown';\nlet message = item.message?.text || item.body || '';\n\nphone = phone.replace(/\\D/g, '');\nif (phone.startsWith('966')) phone = '+' + phone;\nelse if (phone.startsWith('0')) phone = '+966' + phone.slice(1);\nelse if (phone) phone = '+966' + phone;\n\nreturn [{ json: { phone, name, email, source, message, raw: item, received_at: new Date().toISOString() } }];"
+      },
+      "name": "Code – Normalize & Validate Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        -48
+      ],
+      "id": "aed0a353-beaa-40d9-a58c-ff45a4c8a6a3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.phone }}",
+              "operation": "notEmpty"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – Valid Phone?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        704,
+        -48
+      ],
+      "id": "6349795c-8164-40b8-a25a-76eb34d34503"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 1
+      },
+      "name": "Supabase – Check Existing Lead",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        896,
+        -64
+      ],
+      "id": "b2386959-d7e0-4f93-8b48-10fc095589de",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $input.all().length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – Lead Already Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1072,
+        -64
+      ],
+      "id": "55716d71-be66-4179-8414-71b87f4f76da"
+    },
+    {
+      "parameters": {
+        "jsCode": "const phone = $json.phone;\nconst windowSeconds = 60;\nconst maxRequests = 5;\n\nconst now = Date.now();\nconst key = 'rate:' + phone;\n\nlet history = $staticData[key] || [];\nhistory = history.filter(ts => now - ts < windowSeconds * 1000);\n\nif (history.length >= maxRequests) {\n  return [{ json: { ...$json, rate_limited: true } }];\n}\n\nhistory.push(now);\n$staticData[key] = history;\n\nreturn [{ json: { ...$json, rate_limited: false } }];"
+      },
+      "name": "Code – Rate Limit per Phone",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        416
+      ],
+      "id": "d4aa2b96-ebd5-46df-8643-ef84b5795e8b"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.rate_limited }}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – Rate Limited?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        192,
+        416
+      ],
+      "id": "fe1c1649-48c3-483b-8966-b11eb4f04627"
+    },
+    {
+      "parameters": {
+        "operation": "update"
+      },
+      "name": "Supabase – Update Existing Lead",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        656,
+        432
+      ],
+      "id": "c168c59a-700b-43e7-815a-8fdeb8911ae5",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert"
+      },
+      "name": "Supabase – Create New Lead",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        864,
+        432
+      ],
+      "id": "ed8bbb7a-b922-4626-827d-5e9dbd2937cc",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 1
+      },
+      "name": "Supabase – Check Consent",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        416,
+        224
+      ],
+      "id": "db6d5a62-b90b-4eb5-b476-ac305b5c18af",
+      "credentials": {
+        "supabaseApi": {
+          "id": "NYBDsalw3dxfk3mY",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $input.all().length > 0 }}",
+              "value2": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – Consent Granted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        656,
+        224
+      ],
+      "id": "4f2cbc97-18a3-4729-bf3d-568f3a0079a0"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_ADMIN_CHAT_ID",
+        "text": "=⚠️ **Lead بدون موافقة (Consent Missing)**\nPhone: {{ $json.phone }}\nSource: {{ $json.source }}\nMessage: {{ $json.message | truncate(100) }}",
+        "additionalFields": {}
+      },
+      "name": "Telegram – Consent Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        912,
+        208
+      ],
+      "id": "0f9147dc-f0f1-42f1-bbe2-c3b0377f0061",
+      "webhookId": "7392fd4e-7227-4db3-a868-a88a6c68bc04",
+      "credentials": {
+        "telegramApi": {
+          "id": "2eH4bXUu6PKw1KSb",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert"
+      },
+      "name": "Supabase – Log Interaction",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1088,
+        240
+      ],
+      "id": "2abaadb0-84eb-4b20-8ff8-cbde1f9da970",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-n8n-domain.com/webhook/lead-scoring-entry",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "name": "HTTP – Send to Flow #3 (Scoring)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1088,
+        432
+      ],
+      "id": "bf9cde1d-b379-42f8-84c4-826070bd94a9"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_ADMIN_CHAT_ID",
+        "text": "=✅ **Lead جديد تم التقاطه وإرساله للتصنيف!**\nPhone: {{ $json.phone }}\nName: {{ $json.name }}\nSource: {{ $json.source }}",
+        "additionalFields": {}
+      },
+      "name": "Telegram – Success Confirmation",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1088,
+        -272
+      ],
+      "id": "92af2ab9-204b-4e99-91cf-812e5b8cdd5c",
+      "webhookId": "a7251fb6-18af-4b67-ab35-1e76d481699d",
+      "credentials": {
+        "telegramApi": {
+          "id": "2eH4bXUu6PKw1KSb",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_ADMIN_CHAT_ID",
+        "text": "=🚫 **Rate Limit Exceeded – تم تجاهل الـ Lead**\nPhone: {{ $json.phone }}\nSource: {{ $json.source }}",
+        "additionalFields": {}
+      },
+      "name": "Telegram – Rate Limit Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        416,
+        400
+      ],
+      "id": "98844132-e1de-4841-bd4e-15731730ef8d",
+      "webhookId": "d5560cde-2293-4e6f-b645-e408be19a930",
+      "credentials": {
+        "telegramApi": {
+          "id": "2eH4bXUu6PKw1KSb",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        336,
+        -288
+      ],
+      "id": "f5677964-af56-4ba8-a084-f3d339371f35"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_ADMIN_CHAT_ID",
+        "text": "=⚠️ **خطأ في Lead Capture Flow!**\nالعقدة: {{ $json.node.name }}\nالخطأ: {{ $json.error.message }}",
+        "additionalFields": {}
+      },
+      "name": "Telegram – Error Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        -288
+      ],
+      "id": "f051f589-3218-424f-a3a9-505abc2576df",
+      "webhookId": "0935f16a-1fa2-4d3b-9e68-39c013d5f7c9",
+      "credentials": {
+        "telegramApi": {
+          "id": "2eH4bXUu6PKw1KSb",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook – WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Merge All Incoming Channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook – Telegram": {
+      "main": [
+        [
+          {
+            "node": "Merge All Incoming Channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook – Instagram (Meta)": {
+      "main": [
+        [
+          {
+            "node": "Merge All Incoming Channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook – Website Form": {
+      "main": [
+        [
+          {
+            "node": "Merge All Incoming Channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Incoming Channels": {
+      "main": [
+        [
+          {
+            "node": "Code – Normalize & Validate Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Normalize & Validate Lead": {
+      "main": [
+        [
+          {
+            "node": "If – Valid Phone?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – Valid Phone?": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Check Existing Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram – Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Check Existing Lead": {
+      "main": [
+        [
+          {
+            "node": "If – Lead Already Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – Lead Already Exists?": {
+      "main": [
+        [
+          {
+            "node": "Code – Rate Limit per Phone",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase – Create New Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Rate Limit per Phone": {
+      "main": [
+        [
+          {
+            "node": "If – Rate Limited?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – Rate Limited?": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Rate Limit Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase – Update Existing Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Update Existing Lead": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Check Consent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Create New Lead": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Check Consent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Check Consent": {
+      "main": [
+        [
+          {
+            "node": "If – Consent Granted?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – Consent Granted?": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Consent Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase – Log Interaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Log Interaction": {
+      "main": [
+        [
+          {
+            "node": "HTTP – Send to Flow #3 (Scoring)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP – Send to Flow #3 (Scoring)": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Success Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "d2891791-183f-47a6-ad21-c7c629a491ed",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6772f213d520ca9fb17003dc3594b1426a067fd044fec34984f98f9281430de2"
+  },
+  "id": "Gg6AmYovp5F5FYNe6SNzr",
+  "tags": []
+}

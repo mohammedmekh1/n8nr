@@ -1,0 +1,533 @@
+{
+  "name": "Flow #6 – Sales Handoff & Follow-up Enhanced 2026new",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "makkah-sales-handoff",
+        "options": {}
+      },
+      "name": "Webhook – Sales Handoff Entry",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -832,
+        -160
+      ],
+      "webhookId": "generate-new-id",
+      "id": "261f14db-3aec-4d2e-ab8d-fbb5f6572455"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 1
+      },
+      "name": "Supabase – Get Lead Profile",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -160
+      ],
+      "id": "c634ecb2-554c-4bba-9c38-5683db627f96",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equals",
+              "value2": "booked"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – Already Booked / Closed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -432,
+        -160
+      ],
+      "id": "fc49fe66-197e-411b-8c66-962af76de7f5"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.final_lead_type }}",
+                    "value2": "B2C_hot"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.final_lead_type }}",
+                    "value2": "B2B_high"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.final_lead_type }}",
+                    "value2": "B2C_group"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Switch – Lead Type (B2C/B2B/Group)",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -240,
+        -160
+      ],
+      "id": "4f9c7b93-2fd6-4a95-b518-8b350ba739a8"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$input.first().json, task_title: 'Hot B2C Booking – ' + $json.name, priority: 'high', due_in_minutes: 30 } }];"
+      },
+      "name": "Code – Prepare B2C Task",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        -176
+      ],
+      "id": "9d5a96bc-c0d1-4188-9f13-b8534c96be85"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "YOUR_WOO_URL/wp-json/wc/v3/orders",
+        "authentication": "headerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  payment_method: 'manual',\n  customer_note: 'Hot Lead from n8n: ' + $json.phone,\n  billing: { phone: $json.phone, first_name: $json.name },\n  line_items: [{ product_id: 123, quantity: 1 }]\n} }}",
+        "options": {}
+      },
+      "name": "WooCommerce – Create Draft Booking (B2C)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        272,
+        -176
+      ],
+      "id": "9c43bc87-6d26-4739-9392-be9a33398906"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$input.first().json, task_title: 'B2B Partnership – ' + $json.name + ' (' + $json.company_name + ')', priority: 'medium', due_in_minutes: 60 } }];"
+      },
+      "name": "Code – Prepare B2B Deal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        -144
+      ],
+      "id": "0d0bab27-9643-447c-b1fd-8929380e8194"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$input.first().json, task_title: 'Group Booking – ' + $json.name + ' (' + $json.pax + ' pax)', priority: 'high', due_in_minutes: 20 } }];"
+      },
+      "name": "Code – Prepare Group Task",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        32
+      ],
+      "id": "8e2415b6-b768-4fdd-b699-b6d3f1ea5e1f"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "name": "Merge All Task Preparations",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        48,
+        48
+      ],
+      "id": "2657b77a-068f-4dec-9ee6-27456ef1a82c"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_SALES_GROUP_CHAT_ID",
+        "text": "=🔥 **تسليم عميل جديد للمبيعات!**\nالاسم: {{ $json.name }}\nالهاتف: {{ $json.phone }}\nالنوع: {{ $json.final_lead_type }}\nالمهمة: {{ $json.task_title }}\nالأولوية: {{ $json.priority }}\nالمصدر: {{ $json.source }}\n\n→ يرجى المتابعة خلال {{ $json.due_in_minutes }} دقيقة",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Telegram – Sales Group Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        48
+      ],
+      "id": "c7b69a29-c9e3-4dce-9333-1a76db24ea3c",
+      "webhookId": "b8850a03-fa20-4cab-8010-240720f5fc3a",
+      "credentials": {
+        "telegramApi": {
+          "id": null,
+          "name": "YOUR_TELEGRAM_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 30
+      },
+      "name": "Wait – 30 Minutes First Reminder",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -656,
+        0
+      ],
+      "id": "18969bec-73f3-40c9-9696-af8363a22b2c",
+      "webhookId": "3ca97033-9dba-4c6b-9ab6-33b2ee74ea99"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 1
+      },
+      "name": "Supabase – Check if Still Open",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        0
+      ],
+      "id": "943af19b-7158-480d-9713-86be250deb78",
+      "credentials": {
+        "supabaseApi": {
+          "id": null,
+          "name": "YOUR_SUPABASE_CRED"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $input.all().length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If – Task Still Open?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        448,
+        16
+      ],
+      "id": "9f976fc1-d2f8-4b07-bb60-07a10879712a"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_SALES_REP_CHAT_ID",
+        "text": "=⏰ **تذكير عاجل – العميل ينتظر!**\nالاسم: {{ $json.name }}\nالهاتف: {{ $json.phone }}\nالمهمة: {{ $json.task_title }}\nمرت 30 دقيقة دون تحديث",
+        "additionalFields": {}
+      },
+      "name": "Telegram – 30min Reminder to Rep",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        496,
+        -176
+      ],
+      "id": "2585d8ad-71cd-46ab-9b82-9ba959c2dd0e",
+      "webhookId": "4296e6c6-a9b4-40f8-8281-fefc6314bd64"
+    },
+    {
+      "parameters": {
+        "amount": 90
+      },
+      "name": "Wait – Additional 90min (Total 2h)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        704,
+        -176
+      ],
+      "id": "75f5b82b-0dca-496c-8163-21815a46b3d4",
+      "webhookId": "f56b50c5-9b94-4920-a9c3-f65e1fd5f23c"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_MANAGER_CHAT_ID",
+        "text": "=🚨 **متابعة إدارية مطلوبة**\nالعميل: {{ $json.name }} ({{ $json.phone }})\nالمهمة: {{ $json.task_title }}\nمرت ساعتين دون إغلاق",
+        "additionalFields": {}
+      },
+      "name": "Telegram – Manager 2h Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        704,
+        48
+      ],
+      "id": "62595d39-b3b4-465c-898b-fe6d9b19537c",
+      "webhookId": "85b599cc-5b62-4501-93d7-3bc25a888251"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-n8n-domain.com/webhook/makkah-delivery-engine",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { lead_phone: $json.phone, channel: 'telegram', custom_message: 'مرحبا {{name}}! فريق المبيعات يتابع طلبك الآن.', action_type: 'handoff_confirm' } }}",
+        "options": {}
+      },
+      "name": "HTTP – Send Confirmation via Flow #5",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -832,
+        0
+      ],
+      "id": "0d79b07d-adeb-4c1c-868f-f71afe26df2d"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook – Sales Handoff Entry": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Get Lead Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Get Lead Profile": {
+      "main": [
+        [
+          {
+            "node": "If – Already Booked / Closed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – Already Booked / Closed?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Switch – Lead Type (B2C/B2B/Group)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch – Lead Type (B2C/B2B/Group)": {
+      "main": [
+        [
+          {
+            "node": "Code – Prepare B2C Task",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code – Prepare B2B Deal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code – Prepare Group Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Prepare B2C Task": {
+      "main": [
+        [
+          {
+            "node": "WooCommerce – Create Draft Booking (B2C)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WooCommerce – Create Draft Booking (B2C)": {
+      "main": [
+        [
+          {
+            "node": "Merge All Task Preparations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Prepare B2B Deal": {
+      "main": [
+        [
+          {
+            "node": "Merge All Task Preparations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Prepare Group Task": {
+      "main": [
+        [
+          {
+            "node": "Merge All Task Preparations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Task Preparations": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Sales Group Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram – Sales Group Alert": {
+      "main": [
+        [
+          {
+            "node": "HTTP – Send Confirmation via Flow #5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP – Send Confirmation via Flow #5": {
+      "main": [
+        [
+          {
+            "node": "Wait – 30 Minutes First Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait – 30 Minutes First Reminder": {
+      "main": [
+        [
+          {
+            "node": "Supabase – Check if Still Open",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase – Check if Still Open": {
+      "main": [
+        [
+          {
+            "node": "If – Task Still Open?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If – Task Still Open?": {
+      "main": [
+        [
+          {
+            "node": "Telegram – 30min Reminder to Rep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram – 30min Reminder to Rep": {
+      "main": [
+        [
+          {
+            "node": "Wait – Additional 90min (Total 2h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait – Additional 90min (Total 2h)": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Manager 2h Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "c7d99143-0dac-49e8-823a-2fc936cdbc1f",
+  "meta": {
+    "instanceId": "6772f213d520ca9fb17003dc3594b1426a067fd044fec34984f98f9281430de2"
+  },
+  "id": "b2RpaYlUh4OlFl7nRskXH",
+  "tags": []
+}
